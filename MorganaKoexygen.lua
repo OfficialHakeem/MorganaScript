@@ -59,7 +59,7 @@ local Morgana = {
         _W = Spell.Skillshot({
             Slot = Enums.SpellSlots.W,
             Range = 900,
-            EffectRadius = 275,
+            Radius = 275,
             Delay = 0.25,
             Type = "Circular"
         })
@@ -198,40 +198,53 @@ function _Q:Logic()
 end
 
 function _Q:Auto()
-    local target = TS:GetTarget(self.Range)
-    if not Morgana.autoQ or not target or not self:IsLearned() or not self:IsReady() then
+    local targets = TS:GetTargets(self.Range)
+    if not Morgana.autoQ or #targets < 1 or not self:IsLearned() or not self:IsReady() then
         return
     end
 
-    local dashInstance = DashLib.GetDash(target)
+    for i = 1, #targets do
+        local target = targets[i]
+        local dashInstance = DashLib.GetDash(target)
 
-    if dashInstance then
-        castOnDash(dashInstance, self)
+        if dashInstance then
+            return castOnDash(dashInstance, self)
+        end
+
+        if isImmobile(target) or target.IsSlowed then
+            return self:CastOnHitChance(target, Enums.HitChance.Medium)
+        end
     end
 
-    if isImmobile(target) or target.IsSlowed then
-        self:CastOnHitChance(target, Enums.HitChance.Medium)
-    end
 end
 
 function _W:Logic()
     local target = TS:GetTarget(self.Range)
+
     if not Morgana.useWcombo or not target or not self:IsLearned() or not self:IsReady() then
         return
     end
 
-    self:Cast(target)
+    return self:Cast(target)
 end
 
 function _W:Auto()
-    local target = TS:GetTarget(self.Range)
-    if not Morgana.autoW or not target or not self:IsLearned() or not self:IsReady() then
+    local targets = TS:GetTargets(self.Range)
+    if not Morgana.autoW or #targets < 1 or not self:IsLearned() or not self:IsReady() then
         return
     end
 
-    if isImmobile(target) or target.IsSlowed then
-        self:Cast(target)
+    for i = 1, #targets do
+        local target = targets[i]
+        if isImmobile(target) or target.IsSlowed then
+            return self:Cast(target)
+        end
+
+        if self:CastIfWillHit(2) then
+            return
+        end
     end
+
 end
 --------------------------------------------------------------------------------
 --- Combat Logic
@@ -269,7 +282,6 @@ end
 local ticker = 0
 function Koexygen.OnTick(tick)
     Morgana.OrbMode = Orbwalker:GetMode()
-    Morgana.Target = TS:GetTarget(_Q.Range)
 
     if ticker == 20 then
         Morgana:CheckSettings()
