@@ -15,7 +15,7 @@ local Enums, EventManager, Renderer = Core.Enums, Core.EventManager, Core.Render
 local SpellSlot, Spell, HitChance, DamageLib, PerksIds, DashLib, ImmobileLib = Enums.SpellSlots, Libs.Spell,
     Enums.HitChance, Libs.DamageLib, Enums.PerkIDs, Libs.DashLib, Libs.ImmobileLib
 local TS, Menu, Orbwalker, Prediction = Libs.TargetSelector(), Libs.NewMenu, Libs.Orbwalker, Libs.Prediction
-local Events = Enums.Events
+local Events, ObjManager = Enums.Events, Core.ObjectManager
 local Vector = Core.Geometry.Vector
 local insert, sort = table.insert, table.sort
 
@@ -44,6 +44,10 @@ local Morgana = {
             Radius = 275,
             Delay = 0.25,
             Type = "Circular"
+        }),
+        _E = Spell.Targeted({
+            Slot = Enums.SpellSlots.E,
+            Range = 800
         })
 
     },
@@ -81,17 +85,19 @@ end
 --------------------------------------------------------------------------------
 --- Extract Local Variables
 --------------------------------------------------------------------------------
-local _Q, _W = Morgana.Spells._Q, Morgana.Spells._W
+local _Q, _W, _E = Morgana.Spells._Q, Morgana.Spells._W, Morgana.Spells._E
 --------------------------------------------------------------------------------
 --- Init Menu
 --------------------------------------------------------------------------------
 local function InitMenu()
     local pinkColor = 0xCD44F7FF
+    local greenColor = 0x44F7B1FF
     Menu.RegisterMenu("Morgana Koexygen", "Morgana Koexygen", function()
         Menu.ColumnLayout("cols", "cols", 2, true, function()
             Menu.ColoredText("Combo", pinkColor, true)
             Menu.Checkbox("Q.Combo", "Use [Q]", true)
             Menu.Checkbox("W.Combo", "Use [W]", true)
+            Menu.Checkbox("E.Combo", "Use [E]", true)
 
             Menu.NextColumn()
 
@@ -104,6 +110,7 @@ local function InitMenu()
         Menu.ColoredText("Automatic Options", pinkColor, true)
         Menu.Checkbox("Q.Auto.Hit", "Auto [Q] If high hit chance", true)
         Menu.Checkbox("W.Auto.Hit", "Auto [W] If high hit chance", true)
+        Menu.Checkbox("E.Auto.Use", "Auto [E] Smart Use", true)
 
         Menu.Separator()
         Menu.ColoredText("Config", pinkColor, true)
@@ -122,6 +129,8 @@ local function InitMenu()
             Menu.ColorPicker("Draw.Q.Color", "Draw [Q] Color", pinkColor)
             Menu.Checkbox("Draw.W", "Draw [W] Range", true)
             Menu.ColorPicker("Draw.W.Color", "Draw [W] Color", pinkColor)
+            Menu.Checkbox("Draw.E", "Draw [E] Range", true)
+            Menu.ColorPicker("Draw.E.Color", "Draw [E] Color", greenColor)
 
             Menu.NextColumn()
 
@@ -146,6 +155,11 @@ function Morgana:CheckSettings()
     _W.wDraw = Menu.Get("Draw.W")
     _W.wDrawColor = Menu.Get("Draw.W.Color")
 
+    self.autoE = Menu.Get("E.Auto.Use")
+    _E.eDraw = Menu.Get("Draw.E")
+    _E.eDrawColor = Menu.Get("Draw.E.Color")
+    self.comboE = Menu.Get("E.Combo")
+
     if itemCheckCount == 10 then
         itemCheckCount = 0
         self.hasScepter = hasItem(3116)
@@ -161,7 +175,7 @@ function _Q:Logic()
         return
     end
 
-    self:CastOnHitChance(target, self.MenuHitChance)
+    return self:CastOnHitChance(target, self.MenuHitChance)
 end
 
 function _Q:Auto()
@@ -211,12 +225,53 @@ function _W:Auto()
             return
         end
     end
+end
+
+function _E:Auto()
+    local getAllies = ObjManager.GetNearby("ally", "heroes")
+    local getEnemies = TS:GetTargets(_Q.Range)
+    if not Morgana.autoE or #getAllies < 1 or not self:IsLearned() or not self:IsReady() then
+        return
+    end
+
+    for i = 1, #getEnemies do
+        local enemy = getEnemies[i]
+
+        if enemy.IsDead or enemy.IsInvulnerable then
+            goto continue
+        end
+        -- DEBUG(tostring(enemy:GetSpell(SpellSlot.Q).Level))
+
+        local ActiveSpell = enemy.ActiveSpell
+
+        if ActiveSpell and not ActiveSpell.IsBasicAttack then
+            DEBUG("Getting hero and setting")
+            local hero = ActiveSpell.Target.AsHero
+            DEBUG(tostring(enemy.ActiveSpell.Target.Position))
+
+            self:Cast(hero)
+        end
+
+        ::continue::
+    end
+
+    -- for i = 1, #getAllies do
+    --     local allie = getAllies[i].AsAI
+
+    --     if allie:Distance(Player.Position) > self.Range then
+    --         goto continue
+    --     end
+
+    --     DEBUG(tostring(allie.CharName))
+    --     ::continue::
+    -- end
 
 end
 --------------------------------------------------------------------------------
 --- Combat Logic
 --------------------------------------------------------------------------------
-function Morgana:Combat()
+function Morgana:Combat(tick)
+
     if self.autoQ then
         _Q:Auto()
     end
@@ -225,30 +280,35 @@ function Morgana:Combat()
         _W:Auto()
     end
 
+    if self.autoE then
+        _E:Auto()
+    end
+
     if self.OrbMode == "nil" then
         return
     end
 
     if self.hasScepter then
-        _W:Logic()
-        _Q:Logic()
+        if tick == 1 then
+            _W:Logic()
+        elseif tick == 2 then
+            _Q:Logic()
+        end
     else
-        _Q:Logic()
-        _W:Logic()
+        if tick == 1 then
+            _W:Logic()
+        elseif tick == 2 then
+            _Q:Logic()
+        end
     end
 end
 --------------------------------------------------------------------------------
 --- OnUpdate 60 FPS
 --------------------------------------------------------------------------------
-function Koexygen.OnUpdate(tick)
-    Morgana:Combat()
-end
---------------------------------------------------------------------------------
---- OnTick 30 FPS
---------------------------------------------------------------------------------
 local ticker = 0
-function Koexygen.OnTick(tick)
+function Koexygen.OnUpdate(tick)
     Morgana.OrbMode = Orbwalker:GetMode()
+    Morgana:Combat(tick)
 
     if ticker == 20 then
         Morgana:CheckSettings()
@@ -258,9 +318,20 @@ function Koexygen.OnTick(tick)
     ticker = ticker + 1
 end
 --------------------------------------------------------------------------------
---- Perks Calculation
+--- OnTick 30 FPS
 --------------------------------------------------------------------------------
+-- local ticker = 0
+function Koexygen.OnTick(tick)
+    -- Morgana.OrbMode = Orbwalker:GetMode()
+    -- Morgana:Combat(tick)
 
+    -- if ticker == 20 then
+    --     Morgana:CheckSettings()
+    --     ticker = 0
+    -- end
+
+    -- ticker = ticker + 1
+end
 --------------------------------------------------------------------------------
 --- Drawings
 --------------------------------------------------------------------------------
@@ -269,11 +340,17 @@ function _Q:Drawing()
         Renderer.DrawCircle3D(Player.Position, self.Range, 1, 3, self.qDrawColor)
     end
 end
+
 function _W:Drawing()
     if self.wDraw then
         Renderer.DrawCircle3D(Player.Position, self.Range, 1, 1, self.wDrawColor)
     end
+end
 
+function _E:Drawing()
+    if self.eDraw then
+        Renderer.DrawCircle3D(Player.Position, self.Range, 1, 1, self.eDrawColor)
+    end
 end
 
 function Koexygen:OnDraw()
@@ -283,6 +360,7 @@ function Koexygen:OnDraw()
 
     _Q:Drawing()
     _W:Drawing()
+    _E:Drawing()
 end
 
 --------------------------------------------------------------------------------
