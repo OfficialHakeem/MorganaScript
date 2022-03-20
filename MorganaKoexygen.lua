@@ -5,25 +5,6 @@ end
 
 module("Koexygens Morgana", package.seeall, log.setup)
 clean.module("Koexygens Morgana", clean.seeall, log.setup)
---------------------------------------------------------------------------------
---- Koexygen Helper functions
---------------------------------------------------------------------------------
-local Help = {
-    tLength = function(T)
-        local count = 0
-        for _ in pairs(T) do
-            count = count + 1
-        end
-        return count
-    end,
-    calcPercent = function(percent, maxvalue)
-        if tonumber(percent) and tonumber(maxvalue) then
-            return (maxvalue * percent) / 100
-        end
-        return false
-    end
-
-}
 
 --------------------------------------------------------------------------------
 --- General Definition
@@ -34,6 +15,7 @@ local Enums, EventManager, Renderer = Core.Enums, Core.EventManager, Core.Render
 local SpellSlot, Spell, HitChance, DamageLib, PerksIds, DashLib, ImmobileLib = Enums.SpellSlots, Libs.Spell,
     Enums.HitChance, Libs.DamageLib, Enums.PerkIDs, Libs.DashLib, Libs.ImmobileLib
 local TS, Menu, Orbwalker, Prediction = Libs.TargetSelector(), Libs.NewMenu, Libs.Orbwalker, Libs.Prediction
+local Events = Enums.Events
 local Vector = Core.Geometry.Vector
 local insert, sort = table.insert, table.sort
 
@@ -68,9 +50,6 @@ local Morgana = {
     hasScepter = false
 }
 
-local Buffs = {
-    ArcaneComet = "ASSETS/Perks/Styles/Sorcery/ArcaneComet/ArcaneCometSnipe.lua"
-}
 --------------------------------------------------------------------------------
 --- Koexygen Helper functions
 --------------------------------------------------------------------------------
@@ -154,18 +133,6 @@ end
 --------------------------------------------------------------------------------
 --- Checkings
 --------------------------------------------------------------------------------
-function Morgana:GetBuff(target, buff)
-    local returnBuff = nil
-
-    for i, v in pairs(target.Buffs) do
-        if v.Name == buff then
-            return v
-        end
-    end
-    self.Buffs = returnBuff
-    return returnBuff
-end
-
 local itemCheckCount = 0
 function Morgana:CheckSettings()
     self.useQcombo = Menu.Get("Q.Combo")
@@ -306,6 +273,7 @@ function _W:Drawing()
     if self.wDraw then
         Renderer.DrawCircle3D(Player.Position, self.Range, 1, 1, self.wDrawColor)
     end
+
 end
 
 function Koexygen:OnDraw()
